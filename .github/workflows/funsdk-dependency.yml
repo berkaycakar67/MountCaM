@@ -1,0 +1,46 @@
+name: FunSDK dependency feasibility
+on:
+  push:
+    branches:
+      - experiment/funsdk-dependency
+    paths:
+      - '.github/workflows/funsdk-dependency.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Resolve candidate SDK without packaging an APK
+        shell: bash
+        run: |
+          mkdir -p /tmp/mountcam-sdk-probe
+          cat > /tmp/mountcam-sdk-probe/settings.gradle <<'EOF'
+          rootProject.name = 'mountcam-sdk-probe'
+          EOF
+          cat > /tmp/mountcam-sdk-probe/build.gradle <<'EOF'
+          repositories { mavenCentral() }
+          configurations { sdkProbe }
+          dependencies { sdkProbe 'io.github.xmcamera:libxmfunsdk:4.7.5.3' }
+          tasks.register('verifySdk') {
+              doLast {
+                  def files = configurations.sdkProbe.resolve()
+                  if (files.isEmpty()) throw new GradleException('SDK resolution returned no artifacts')
+                  println "SDK dependency resolved; artifact count: ${files.size()}"
+                  files.each { println "Artifact: ${it.name}" }
+              }
+          }
+          EOF
+          gradle -p /tmp/mountcam-sdk-probe verifySdk --no-daemon --stacktrace
